@@ -45,7 +45,7 @@ class WrfEvaluation:
                 self.dataFrame['ftr_temp'],
                 self.dataFrame['wrf_temp'],
                 pblHFrom_wrf,
-                self.dataFrame['Potential_Temperature'],
+                self.dataFrame['Virtual_Potential_Temperature'],
                 100,
                 pblHFromRadiosondatge,
                 outputFile,
@@ -195,13 +195,13 @@ class WrfEvaluation:
                 return row['ftr_alt']
         return 0
 
-    def plotVerticalTemperatureProfile(self, heights, temperatures, wrf_temperatures, wrf_pblh, potentialTemperature , dpi, pblHFromRadiosondatge, outputFile, save):
+    def plotVerticalTemperatureProfile(self, heights, temperatures, wrf_temperatures, wrf_pblh, virtualPotentialTemperature , dpi, pblHFromRadiosondatge, outputFile, save):
         plt.figure(figsize=[8, 8])
         self.plotLine([self.minT, wrf_pblh], [self.maxT, wrf_pblh])
         self.plotLine([self.minT, pblHFromRadiosondatge], [self.maxT, pblHFromRadiosondatge])
         plt.plot(temperatures, heights, 'bo',markersize=1)
         plt.plot(wrf_temperatures, heights, 'ro',markersize=1)
-        plt.plot(potentialTemperature, heights, 'ro',markersize=1)        
+        plt.plot(virtualPotentialTemperature, heights, 'rv',markersize=1)        
         plt.ylim(0,2500)
         plt.xlim(self.minT,self.maxT)
         plt.ylabel('Height (m)', fontsize=16)
@@ -212,12 +212,35 @@ class WrfEvaluation:
             plt.savefig(outputFile, dpi=dpi)
 
     def potentialTemperature(self, Temperature, Pressure):
-        Theta = Temperature*(self.P0/Pressure)**(2/7)
+        Theta = (Temperature + 273.15)*(self.P0/(Pressure*100))**(2/7)
         return Theta
+    
+    def virtualPotentialTemperature(self, potentialTemperature, mixingRatio):
+        vTheta = (potentialTemperature + 273.15) * (1 + 0.61*mixingRatio)
+        return vTheta
+    
+    def virtualTemperature(self, Temperature, mixingRatio):
+        vTemperature = (Temperature + 273.15) * (1 + 0.61*mixingRatio)
+        return vTemperature
+    
+    def mixingRatio(self, HR, Temperature, Pressure):
+        eps = 0.622
+        es = 6.112 * math.exp(17.67*Temperature/(Temperature + 243.5))
+        ws = eps * es /(Pressure - (1 - eps)*es)
+        w = (HR/100)*ws
+        return w
 
     def addVirtualPotentialTemperature(self):
         potentialTemperature = []
         for index, row in self.dataFrame.iterrows():
-            potentialTemperature.append(self.potentialTemperature(row['ftr_temp'],  row['ftr_pres']))
+            potentialTemperature.append(self.potentialTemperature(row['ftr_temp'],  row['ftr_pres']) - 273.15)
         self.dataFrame['Potential_Temperature'] = potentialTemperature
-            
+        virtualPotentialTemperature = []
+        for index, row in self.dataFrame.iterrows():
+            virtualPotentialTemperature.append(self.virtualPotentialTemperature(row['Potential_Temperature'], self.mixingRatio(row['ftr_hum'], row['ftr_temp'], row['ftr_pres'])) - 273.15)
+        self.dataFrame['Virtual_Potential_Temperature'] = virtualPotentialTemperature
+        virtualTemperature = []
+        for index, row in self.dataFrame.iterrows():
+            virtualTemperature.append(self.virtualTemperature(row['ftr_temp'], self.mixingRatio(row['ftr_hum'], row['ftr_temp'], row['ftr_pres'])) - 273.15)
+        self.dataFrame['Virtual_Temperature'] = virtualTemperature
+    
