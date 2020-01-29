@@ -14,7 +14,7 @@ class WrfEvaluation:
     columnsFromRadiosondatge = [] 
     # Other avaliable columns in radiosondatge files ftr_DP, ftr_WF, ftr_WD, ftr_VEF, ftr_VNF
     dataFrame = pd.DataFrame()
-    maxAltura = 0
+    maxHeight = 0
     
     
     def __init__(self):
@@ -24,7 +24,7 @@ class WrfEvaluation:
         self.columnsFromRadiosondatge = ['ftr_LAT','ftr_LON','ftr_alt','ftr_temp', 'ftr_pres', 'ftr_hum'] 
         # Other avaliable columns in radiosondatge files ftr_DP, ftr_WF, ftr_WD, ftr_VEF, ftr_VNF
         self.dataFrame = pd.DataFrame()
-        self.maxAltura = 2500
+        self.maxHeight = 2500
 
     def compareVerticalProfile(self, radiosondatgeFile, wrf_file, wrf_cell_Time, outputFile, plot, save):
         startTime = time.time()
@@ -36,7 +36,7 @@ class WrfEvaluation:
         self.addWrfClosestCell(wrf_file, wrf_cell_Time)
         self.addWrfTemperaturePredictionTodataFrame(wrf_file, wrf_cell_Time)
         self.addPBLHtoDataFrame(wrf_file, wrf_cell_Time)
-        pblHFromRadiosondatge = self.computePBLHeightOnRadiosondatge()
+        pblHFromRadiosondatge = self.computePBLHeightOnRadiosondatgeWithGradient()
 
         pblHFrom_wrf = self.dataFrame['wrf_pblh'].mean()
         if plot == True:
@@ -45,7 +45,7 @@ class WrfEvaluation:
                 self.dataFrame['ftr_temp'],
                 self.dataFrame['wrf_temp'],
                 pblHFrom_wrf,
-                self.dataFrame['Virtual_Potential_Temperature'],
+                self.dataFrame['Potential_Temperature'],
                 100,
                 pblHFromRadiosondatge,
                 outputFile,
@@ -61,8 +61,8 @@ class WrfEvaluation:
                 }
 
     def cutDataFrame(self):
-        #data2500 = self.dataFrame[self.dataFrame.loc[:,'ftr_alt'] < self.maxAltura]        
-        self.dataFrame = self.dataFrame[self.dataFrame['ftr_alt'] < self.maxAltura]
+        #data2500 = self.dataFrame[self.dataFrame.loc[:,'ftr_alt'] < self.maxHeight]        
+        self.dataFrame = self.dataFrame[self.dataFrame['ftr_alt'] < self.maxHeight]
         
     
     #given a point by lat and lon return the wrf indexes where the point is
@@ -194,6 +194,18 @@ class WrfEvaluation:
             if row['ftr_temp'] > firstMinimum and abs(row['ftr_temp'] - firstMinimum) > 1:
                 return row['ftr_alt']
         return 0
+   
+    def computePBLHeightOnRadiosondatgeWithGradient(self):
+        # Detecta el máxim del gradient de temperatura potencial
+        MaxGradient = 0
+        PBLH = 0
+        for index, row in self.dataFrame.iterrows():
+            if index < len(self.dataFrame) - 1:             
+                gradient = (self.dataFrame.loc[index+1,'Potential_Temperature'] - self.dataFrame.loc[index,'Potential_Temperature'])/(self.dataFrame.loc[index+1,'ftr_alt'] - self.dataFrame.loc[index,'ftr_alt'])
+                if gradient > MaxGradient:
+                    MaxGradient = gradient
+                    PBLH = self.dataFrame.loc[index,'ftr_alt']
+        return PBLH
 
     def plotVerticalTemperatureProfile(self, heights, temperatures, wrf_temperatures, wrf_pblh, virtualPotentialTemperature , dpi, pblHFromRadiosondatge, outputFile, save):
         plt.figure(figsize=[8, 8])
@@ -202,7 +214,7 @@ class WrfEvaluation:
         plt.plot(temperatures, heights, 'bo',markersize=1)
         plt.plot(wrf_temperatures, heights, 'ro',markersize=1)
         plt.plot(virtualPotentialTemperature, heights, 'rv',markersize=1)        
-        plt.ylim(0,2500)
+        plt.ylim(0,self.maxHeight)
         plt.xlim(self.minT,self.maxT)
         plt.ylabel('Height (m)', fontsize=16)
         plt.xlabel('Temperature ($^\circ$)', fontsize=16)
@@ -243,4 +255,7 @@ class WrfEvaluation:
         for index, row in self.dataFrame.iterrows():
             virtualTemperature.append(self.virtualTemperature(row['ftr_temp'], self.mixingRatio(row['ftr_hum'], row['ftr_temp'], row['ftr_pres'])) - 273.15)
         self.dataFrame['Virtual_Temperature'] = virtualTemperature
+        
+    
+        
     
