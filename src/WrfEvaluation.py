@@ -44,11 +44,12 @@ class WrfEvaluation:
         PB = np.array(wrf_file.variables['PB'][wrf_cell_Time])
         P = np.array(wrf_file.variables['P'][wrf_cell_Time])
         PBLH = np.array(wrf_file.variables['PBLH'][wrf_cell_Time])
+        QVAPOR = np.array(wrf_file.variables['QVAPOR'][wrf_cell_Time])
         self.dataFrame = self.getColumnsFromRadiosondatgeFile( radiosondatgeFile, self.columnsFromRadiosondatge)
         self.cutDataFrame()
         self.addVirtualPotentialTemperature()
         self.addWrfClosestCell(XLONG, XLAT)
-        self.addWrfTemperaturePredictionTodataFrame(THETA, PH, PHB, P, PB)
+        self.addWrfTemperaturePredictionTodataFrame(THETA, PH, PHB, P, PB, QVAPOR)
         self.addPBLHtoDataFrame(PBLH)
         self.pblHFromRadiosondatge = self.computePBLHeightOnRadiosondatgeWithGradient()
 
@@ -128,7 +129,7 @@ class WrfEvaluation:
         temp = theta*math.pow((ptot/self.P0),(2/7))
         return temp-273.15
     
-    def getWrfTempInCelFromLatILonIandH(self, latI, lonI, h, THETA, PH, PHB, P, PB):
+    def getWrfTempInCelFromLatILonIandH(self, latI, lonI, h, THETA, PH, PHB, P, PB, QVAPOR):
         lat = int(latI)
         lon = int(lonI)
 
@@ -155,23 +156,28 @@ class WrfEvaluation:
             P[lowerLayer+1,lat,lon]
         )
     
-        wrf_prediction = self.getTemperatureFromWrfAt(h,lowh,Tlowh,upperh,Tupperh)
-        wrf_thetaprediction = self.getTemperatureFromWrfAt(h, lowh, THETA[lowerLayer,lat,lon]+300, upperh, THETA[lowerLayer+1,lat,lon]+300)
-        return wrf_prediction, wrf_thetaprediction
+        wrf_TempPrediction = self.getTemperatureFromWrfAt(h,lowh,Tlowh,upperh,Tupperh)
+        wrf_ThetaPrediction = self.getTemperatureFromWrfAt(h, lowh, THETA[lowerLayer, lat, lon]+300, upperh, THETA[lowerLayer+1, lat, lon]+300)
+        wrf_QvaporPrediction = self.getTemperatureFromWrfAt(h, lowh, QVAPOR[lowerLayer, lat, lon], upperh, QVAPOR[lowerLayer+1, lat, lon])
+        wrf_vThetaPrediction = self.virtualPotentialTemperature(wrf_ThetaPrediction -273.15, wrf_QvaporPrediction)
+        return wrf_TempPrediction, wrf_ThetaPrediction, wrf_vThetaPrediction
     
-    def addWrfTemperaturePredictionTodataFrame(self, THETA, PH, PHB, P, PB):
+    def addWrfTemperaturePredictionTodataFrame(self, THETA, PH, PHB, P, PB, QVAPOR):
         wrf_temperatures = []
         wrf_thetas = []
+        wrf_vthetas = []
         for index, row in self.dataFrame.iterrows():
-            temp, theta = self.getWrfTempInCelFromLatILonIandH(
+            temp, theta, vtheta = self.getWrfTempInCelFromLatILonIandH(
                     row['wrf_index_lat'], 
                     row['wrf_index_lon'], 
                     row['ftr_alt'], 
-                    THETA, PH, PHB, P, PB)
+                    THETA, PH, PHB, P, PB, QVAPOR)
             wrf_temperatures.append(temp)
             wrf_thetas.append(theta -273.15)
+            wrf_vthetas.append(vtheta -273.15)
         self.dataFrame['wrf_temp'] = wrf_temperatures
         self.dataFrame['wrf_theta'] = wrf_thetas
+        self.dataFrame['wrf_vtheta'] = wrf_vthetas
         return 1 #radiosondatgeDataFrame
 
     def addPBLHtoDataFrame(self, PBLH):
